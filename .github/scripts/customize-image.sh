@@ -8,13 +8,24 @@ echo "================================"
 echo "Intercept OS Customization"
 echo "================================"
 
+# Prevent initramfs updates during package installation (doesn't work properly in chroot)
+echo "[0/8] Disabling initramfs updates temporarily..."
+export INITRD=No
+cat > /usr/sbin/policy-rc.d << 'EOF'
+#!/bin/sh
+exit 101
+EOF
+chmod +x /usr/sbin/policy-rc.d
+
 # Update package lists
 echo "[1/8] Updating package lists..."
 apt-get update
 
 # Upgrade existing packages
 echo "[2/8] Upgrading system packages..."
-DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+DEBIAN_FRONTEND=noninteractive apt-get upgrade -y || {
+    echo "Warning: Some packages had errors during upgrade, continuing..."
+}
 
 # Install base dependencies
 echo "[3/8] Installing base system dependencies..."
@@ -159,6 +170,9 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 rm -rf /tmp/*
 rm -rf /var/tmp/*
+
+# Remove policy-rc.d
+rm -f /usr/sbin/policy-rc.d
 
 # Create welcome message
 cat > /etc/motd << 'EOF'

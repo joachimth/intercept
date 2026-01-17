@@ -155,9 +155,23 @@ jobs:
           # Copy qemu-arm-static for ARM emulation
           sudo cp /usr/bin/qemu-arm-static /mnt/rpi-root/usr/bin/
 
+          # Mount necessary pseudo-filesystems for chroot
+          echo "Mounting pseudo-filesystems for chroot..."
+          sudo mount -t proc proc /mnt/rpi-root/proc
+          sudo mount -t sysfs sys /mnt/rpi-root/sys
+          sudo mount -o bind /dev /mnt/rpi-root/dev
+          sudo mount -o bind /dev/pts /mnt/rpi-root/dev/pts
+
           # Run customization script in chroot
           echo "Running customization script..."
           sudo chroot /mnt/rpi-root /bin/bash /tmp/customize-image.sh
+
+          # Unmount pseudo-filesystems
+          echo "Unmounting pseudo-filesystems..."
+          sudo umount /mnt/rpi-root/dev/pts || true
+          sudo umount /mnt/rpi-root/dev || true
+          sudo umount /mnt/rpi-root/sys || true
+          sudo umount /mnt/rpi-root/proc || true
 
           # Clean up
           sudo rm /mnt/rpi-root/tmp/customize-image.sh
@@ -166,11 +180,23 @@ jobs:
       - name: Unmount and cleanup
         if: always()
         run: |
-          # Sync and unmount
+          # Sync and unmount (in correct order)
           sync
+
+          # Unmount pseudo-filesystems if still mounted
+          sudo umount /mnt/rpi-root/dev/pts 2>/dev/null || true
+          sudo umount /mnt/rpi-root/dev 2>/dev/null || true
+          sudo umount /mnt/rpi-root/sys 2>/dev/null || true
+          sudo umount /mnt/rpi-root/proc 2>/dev/null || true
+
+          # Unmount main partitions
           sudo umount /mnt/rpi-boot || true
           sudo umount /mnt/rpi-root || true
+
+          # Detach loop device
           sudo losetup -d $LOOP_DEVICE || true
+
+          # Clean up mount points
           sudo rm -rf /mnt/rpi-boot /mnt/rpi-root
 
       - name: Compress image
