@@ -16,11 +16,21 @@ on:
           - lite
           - full
           - desktop
-  release:
-    types: [published]
+  schedule:
+    # Build monthly on the 1st at 02:00 UTC
+    - cron: '0 2 1 * *'
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+    paths:
+      - '.github/workflows/build-custom-os.yml'
+      - '.github/scripts/**'
+      - 'setup.sh'
+      - 'requirements.txt'
+  release:
+    types: [published]
 
 env:
   IMAGE_NAME: intercept-rpi-os
@@ -220,18 +230,35 @@ jobs:
             ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz.sha256
           retention-days: 30
 
-      - name: Create release and upload assets
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # Use existing tag
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+          else
+            # Generate tag for scheduled/manual builds
+            DATE=$(date +%Y.%m.%d)
+            echo "RELEASE_TAG=build-${DATE}" >> $GITHUB_OUTPUT
+            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.release_tag.outputs.RELEASE_TAG }}
+          name: Intercept Custom OS - ${{ steps.release_tag.outputs.RELEASE_TAG }}
+          prerelease: ${{ steps.release_tag.outputs.IS_PRERELEASE }}
           files: |
             ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz
             ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz.sha256
           body: |
             ## Intercept Custom Raspberry Pi OS Image
 
-            **Version:** ${{ steps.vars.outputs.VERSION }}
-            **Base OS:** Raspberry Pi OS (${{ steps.vars.outputs.IMAGE_TYPE }}) - ${{ steps.vars.outputs.RPI_OS_VERSION }}
+            **Version:** ${{ steps.release_tag.outputs.RELEASE_TAG }}
+            **Base OS:** Raspberry Pi OS Lite (latest)
+            **Build Date:** ${{ steps.vars.outputs.RPI_OS_VERSION }}
 
             ### Features
             - Pre-installed and configured intercept SIGINT platform

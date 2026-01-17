@@ -4,6 +4,8 @@
   <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/github/v/release/smittix/intercept?label=latest%20release" alt="Latest Release">
+  <img src="https://img.shields.io/github/workflow/status/smittix/intercept/Build%20Custom%20Raspberry%20Pi%20OS%20Image?label=rpi%20image%20build" alt="RPi Image Build">
 </p>
 
 <p align="center">
@@ -21,6 +23,8 @@ Support the developer of this open-source project
 <p align="center">
   <img src="static/images/screenshots/intercept-main.png" alt="Screenshot">
 </p>
+
+> **🎉 New!** Pre-built Raspberry Pi OS images now available! Get up and running in minutes with our [ready-to-use images](#raspberry-pi-custom-os-image-easiest-). Just flash to SD card and boot!
 
 ---
 
@@ -59,17 +63,46 @@ docker compose up -d
 
 > **Note:** Docker requires privileged mode for USB SDR access. See `docker-compose.yml` for configuration options.
 
-### Raspberry Pi Custom OS Image (Easiest)
+### Raspberry Pi Custom OS Image (Easiest) ⚡
 
-For Raspberry Pi users, we provide a ready-to-use custom OS image with intercept pre-installed and auto-starting on boot.
+**Pre-built Raspberry Pi OS images with intercept ready to use!**
 
-**Quick Start:**
-1. Download the latest `.img.xz` from [Releases](https://github.com/smittix/intercept/releases)
-2. Flash to SD card using Raspberry Pi Imager or Balena Etcher
-3. Insert into Raspberry Pi and power on
-4. Access at `http://<raspberry-pi-ip>:5050`
+We automatically build and release custom Raspberry Pi OS images monthly. These images have intercept pre-installed with all dependencies and auto-start on boot.
 
-See [Custom OS Image Documentation](docs/CUSTOM_OS_IMAGE.md) for detailed instructions, WiFi setup, and troubleshooting.
+#### 📥 Download
+
+**Latest Release:** [Download from GitHub Releases](https://github.com/smittix/intercept/releases/latest)
+
+- **File:** `intercept-rpi-os-*.img.xz` (~2-3 GB compressed)
+- **Base:** Raspberry Pi OS Lite (latest)
+- **Updated:** Automatically built monthly
+
+#### 🚀 Quick Installation
+
+1. **Download** the latest `.img.xz` file from [Releases](https://github.com/smittix/intercept/releases)
+2. **Flash** to SD card (8GB+) using:
+   - [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (recommended)
+   - [Balena Etcher](https://www.balena.io/etcher/)
+3. **Insert** SD card into your Raspberry Pi (3B+ or newer)
+4. **Power on** and wait 2-3 minutes for first boot
+5. **Access** intercept at `http://<raspberry-pi-ip>:5050`
+
+#### 🔐 Default Credentials
+
+- **User:** `intercept`
+- **Password:** `intercept`
+
+**⚠️ Change password after first login:** `ssh intercept@<ip>` then run `passwd`
+
+#### 📖 Additional Info
+
+- SSH is enabled by default
+- Intercept runs automatically as a systemd service
+- WiFi setup: See [Custom OS Image Documentation](docs/CUSTOM_OS_IMAGE.md)
+- Service control: `sudo systemctl status intercept`
+- View logs: `sudo journalctl -u intercept -f`
+
+**Full documentation:** [Custom OS Image Guide](docs/CUSTOM_OS_IMAGE.md)
 
 ### Open the Interface
 
