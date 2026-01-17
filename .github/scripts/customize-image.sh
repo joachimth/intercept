@@ -70,9 +70,13 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     rtl-433 \
     multimon-ng \
     dump1090-mutability \
-    kalibrate-rtl \
     soapysdr-tools \
     soapysdr-module-rtlsdr
+
+# Try to install kalibrate-rtl if available (not in all repos)
+DEBIAN_FRONTEND=noninteractive apt-get install -y kalibrate-rtl || {
+    echo "kalibrate-rtl not available in repos, skipping..."
+}
 
 # Try to install acarsdec if available
 DEBIAN_FRONTEND=noninteractive apt-get install -y acarsdec || {
