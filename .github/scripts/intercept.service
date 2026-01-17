@@ -1,0 +1,31 @@
+[Unit]
+Description=Intercept SIGINT Platform
+Documentation=https://github.com/smittix/intercept
+After=network-online.target bluetooth.service gpsd.service
+Wants=network-online.target bluetooth.service gpsd.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/intercept
+Environment="PATH=/opt/intercept/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="INTERCEPT_HOST=0.0.0.0"
+Environment="INTERCEPT_PORT=5050"
+Environment="INTERCEPT_LOG_LEVEL=INFO"
+ExecStartPre=/bin/sleep 10
+ExecStart=/opt/intercept/venv/bin/python3 /opt/intercept/intercept.py --host 0.0.0.0 --port 5050
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening (optional, can be adjusted based on needs)
+NoNewPrivileges=false
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

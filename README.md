@@ -59,6 +59,18 @@ docker compose up -d
 
 > **Note:** Docker requires privileged mode for USB SDR access. See `docker-compose.yml` for configuration options.
 
+### Raspberry Pi Custom OS Image (Easiest)
+
+For Raspberry Pi users, we provide a ready-to-use custom OS image with intercept pre-installed and auto-starting on boot.
+
+**Quick Start:**
+1. Download the latest `.img.xz` from [Releases](https://github.com/smittix/intercept/releases)
+2. Flash to SD card using Raspberry Pi Imager or Balena Etcher
+3. Insert into Raspberry Pi and power on
+4. Access at `http://<raspberry-pi-ip>:5050`
+
+See [Custom OS Image Documentation](docs/CUSTOM_OS_IMAGE.md) for detailed instructions, WiFi setup, and troubleshooting.
+
 ### Open the Interface
 
 After starting, open **http://localhost:5050** in your browser.
@@ -99,6 +111,7 @@ Most features work with a basic RTL-SDR dongle (RTL2832U + R820T2).
 
 - [Usage Guide](docs/USAGE.md) - Detailed instructions for each mode
 - [Hardware Guide](docs/HARDWARE.md) - SDR hardware and advanced setup
+- [Custom OS Image](docs/CUSTOM_OS_IMAGE.md) - Pre-built Raspberry Pi OS images
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Security](docs/SECURITY.md) - Network security and best practices
 
