@@ -173,9 +173,9 @@ jobs:
           sudo umount /mnt/rpi-root/sys || true
           sudo umount /mnt/rpi-root/proc || true
 
-          # Clean up
-          sudo rm /mnt/rpi-root/tmp/customize-image.sh
-          sudo rm /mnt/rpi-root/usr/bin/qemu-arm-static
+          # Clean up (files may already be removed by the customization script)
+          sudo rm /mnt/rpi-root/tmp/customize-image.sh 2>/dev/null || true
+          sudo rm /mnt/rpi-root/usr/bin/qemu-arm-static 2>/dev/null || true
 
       - name: Unmount and cleanup
         if: always()
