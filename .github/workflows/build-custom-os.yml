@@ -71,26 +71,20 @@ jobs:
             fdisk \
             dosfstools \
             e2fsprogs \
-            systemd-container
+            systemd-container \
+            rsync
 
       - name: Download Raspberry Pi OS image
         run: |
           RPI_OS_VERSION="${{ steps.vars.outputs.RPI_OS_VERSION }}"
           IMAGE_TYPE="${{ steps.vars.outputs.IMAGE_TYPE }}"
 
-          # Construct download URL based on image type
-          if [ "$IMAGE_TYPE" = "lite" ]; then
-            IMAGE_URL="https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-${RPI_OS_VERSION}/$(date -d "${RPI_OS_VERSION}" +%Y-%m-%d)-raspios-bookworm-armhf-lite.img.xz"
-          elif [ "$IMAGE_TYPE" = "full" ]; then
-            IMAGE_URL="https://downloads.raspberrypi.org/raspios_full_armhf/images/raspios_full_armhf-${RPI_OS_VERSION}/$(date -d "${RPI_OS_VERSION}" +%Y-%m-%d)-raspios-bookworm-armhf-full.img.xz"
-          else
-            IMAGE_URL="https://downloads.raspberrypi.org/raspios_armhf/images/raspios_armhf-${RPI_OS_VERSION}/$(date -d "${RPI_OS_VERSION}" +%Y-%m-%d)-raspios-bookworm-armhf.img.xz"
-          fi
-
-          echo "Downloading from: $IMAGE_URL"
-          wget -O raspios.img.xz "$IMAGE_URL" || {
-            echo "Failed to download specific version, trying latest..."
-            wget -O raspios.img.xz "https://downloads.raspberrypi.org/raspios_lite_armhf_latest"
+          # Try to download latest lite image first (simpler and more reliable)
+          echo "Downloading Raspberry Pi OS Lite (latest)..."
+          wget -O raspios.img.xz "https://downloads.raspberrypi.org/raspios_lite_armhf_latest" || {
+            echo "Failed to download, trying alternative source..."
+            # Fallback to specific version if needed
+            wget -O raspios.img.xz "https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-${RPI_OS_VERSION}/${RPI_OS_VERSION}-raspios-bookworm-armhf-lite.img.xz"
           }
 
           echo "Extracting image..."
@@ -99,8 +93,8 @@ jobs:
 
       - name: Expand image size
         run: |
-          # Add 4GB to the image for intercept and dependencies
-          dd if=/dev/zero bs=1M count=4096 >> base-image.img
+          # Add 6GB to the image for intercept and dependencies
+          dd if=/dev/zero bs=1M count=6144 >> base-image.img
 
           # Expand the root partition
           echo ", +" | sudo sfdisk -N 2 base-image.img
@@ -129,13 +123,19 @@ jobs:
           sudo mount ${LOOP_DEVICE}p1 /mnt/rpi-boot
           sudo mount ${LOOP_DEVICE}p2 /mnt/rpi-root
 
-          # Copy intercept files
+          # Copy intercept files (exclude large/unnecessary files)
           echo "Copying intercept files to image..."
           sudo mkdir -p /mnt/rpi-root/opt/intercept
-          sudo cp -r . /mnt/rpi-root/opt/intercept/
-
-          # Remove git directory to save space
-          sudo rm -rf /mnt/rpi-root/opt/intercept/.git
+          sudo rsync -a --exclude='.git' \
+            --exclude='base-image.img' \
+            --exclude='*.img' \
+            --exclude='*.img.xz' \
+            --exclude='*.iso' \
+            --exclude='__pycache__' \
+            --exclude='*.pyc' \
+            --exclude='.pytest_cache' \
+            --exclude='venv' \
+            ./ /mnt/rpi-root/opt/intercept/
 
           # Copy customization script
           sudo cp .github/scripts/customize-image.sh /mnt/rpi-root/tmp/customize-image.sh
