@@ -3,9 +3,12 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.9+-blue.svg" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License">
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Raspberry%20Pi-lightgrey.svg" alt="Platform">
+  <a href="https://github.com/smittix/intercept/releases/latest">
+    <img src="https://img.shields.io/badge/Raspberry%20Pi%20OS-ready--to--use%20image-C51A4A?logo=raspberry-pi&logoColor=white" alt="Raspberry Pi OS Image">
+  </a>
   <img src="https://img.shields.io/github/v/release/smittix/intercept?label=latest%20release" alt="Latest Release">
-  <img src="https://img.shields.io/github/workflow/status/smittix/intercept/Build%20Custom%20Raspberry%20Pi%20OS%20Image?label=rpi%20image%20build" alt="RPi Image Build">
+  <img src="https://img.shields.io/github/actions/workflow/status/smittix/intercept/build-custom-os.yml?label=image%20build" alt="RPi Image Build">
 </p>
 
 <p align="center">
