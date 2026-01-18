@@ -306,7 +306,7 @@ install_multimon_ng_from_source_macos() {
 }
 
 install_macos_packages() {
-  TOTAL_STEPS=13
+  TOTAL_STEPS=17
   CURRENT_STEP=0
 
   progress "Checking Homebrew"
@@ -346,6 +346,16 @@ install_macos_packages() {
 
   progress "Installing SoapySDR"
   brew_install soapysdr
+
+  progress "Installing HackRF tools"
+  (brew_install hackrf) || warn "HackRF not available via Homebrew"
+
+  progress "Installing LimeSDR tools"
+  (brew_install limesuite) || warn "LimeSuite not available via Homebrew"
+
+  progress "Installing SoapySDR plugins"
+  (brew_install soapyhackrf) || warn "SoapyHackRF not available via Homebrew"
+  (brew_install soapylms7) || warn "SoapyLMS7 not available via Homebrew"
 
   progress "Installing gpsd"
   brew_install gpsd
@@ -547,7 +557,7 @@ install_debian_packages() {
   export DEBIAN_FRONTEND=noninteractive
   export NEEDRESTART_MODE=a
 
-  TOTAL_STEPS=18
+  TOTAL_STEPS=21
   CURRENT_STEP=0
 
   progress "Updating APT package lists"
@@ -618,6 +628,15 @@ install_debian_packages() {
   # Exclude xtrx-dkms - its kernel module fails to build on newer kernels (6.14+)
   # and causes apt to hang. Most users don't have XTRX hardware anyway.
   apt_install soapysdr-tools xtrx-dkms- || true
+
+  progress "Installing HackRF tools"
+  apt_install hackrf || true
+
+  progress "Installing LimeSDR tools"
+  apt_install limesuite || true
+
+  progress "Installing SoapySDR plugins"
+  apt_install soapysdr-module-hackrf soapysdr-module-lms7 || true
 
   progress "Installing gpsd"
   apt_install gpsd gpsd-clients || true

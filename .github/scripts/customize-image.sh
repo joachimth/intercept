@@ -71,7 +71,11 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
     multimon-ng \
     dump1090-mutability \
     soapysdr-tools \
-    soapysdr-module-rtlsdr
+    soapysdr-module-rtlsdr \
+    hackrf \
+    limesuite \
+    soapysdr-module-hackrf \
+    soapysdr-module-lms7
 
 # Try to install kalibrate-rtl if available (not in all repos)
 DEBIAN_FRONTEND=noninteractive apt-get install -y kalibrate-rtl || {
