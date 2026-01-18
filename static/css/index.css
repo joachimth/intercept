@@ -486,6 +486,7 @@ header::before {
     height: 2px;
     background: linear-gradient(90deg, var(--accent-cyan) 0%, var(--accent-amber) 50%, var(--accent-cyan) 100%);
     opacity: 0.8;
+    pointer-events: none;
 }
 
 header::after {

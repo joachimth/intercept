@@ -73,6 +73,8 @@
     z-index: 1001;
     flex-shrink: 0;
     transition: background 0.2s ease, border-color 0.2s ease;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .hamburger-btn:hover {
@@ -519,6 +521,10 @@
     }
 
     /* Simplify header on mobile */
+    header {
+        overflow: visible !important;
+    }
+
     header h1 {
         font-size: 16px !important;
     }
