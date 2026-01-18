@@ -539,8 +539,17 @@ function initMobileNav() {
         }
     }
 
-    hamburgerBtn.addEventListener('click', toggleDrawer);
-    overlay.addEventListener('click', closeDrawer);
+    // Handle both click and touch events for better mobile compatibility
+    hamburgerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleDrawer();
+    });
+
+    overlay.addEventListener('click', (e) => {
+        e.preventDefault();
+        closeDrawer();
+    });
 
     // Close drawer when resizing to desktop
     window.addEventListener('resize', () => {
