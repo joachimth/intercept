@@ -30,6 +30,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bluetooth \
     # GPS support
     gpsd-clients \
+    # SoapySDR and hardware support
+    soapysdr-tools \
+    hackrf \
+    limesuite \
+    soapysdr-module-hackrf \
+    soapysdr-module-lms7 \
     # Utilities
     curl \
     procps \
