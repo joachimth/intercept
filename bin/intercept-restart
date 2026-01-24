@@ -1,0 +1,8 @@
+#!/bin/bash
+# intercept-restart - Restart INTERCEPT containers
+
+cd /opt/intercept
+docker-compose restart "$@"
+
+echo "✅ INTERCEPT restarted"
+echo "📋 View logs: intercept-logs"

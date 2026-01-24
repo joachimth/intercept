@@ -1,0 +1,10 @@
+#!/bin/bash
+# intercept-up - Start INTERCEPT containers
+
+cd /opt/intercept
+docker-compose up -d "$@"
+
+echo "✅ INTERCEPT started"
+echo ""
+echo "🌐 Access at: http://$(hostname -I | awk '{print $1}'):5050"
+echo "📋 View logs: intercept-logs"

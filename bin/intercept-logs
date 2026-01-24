@@ -1,0 +1,5 @@
+#!/bin/bash
+# intercept-logs - View INTERCEPT container logs
+
+cd /opt/intercept
+docker-compose logs -f "$@"

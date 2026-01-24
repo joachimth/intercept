@@ -25,6 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     aircrack-ng \
     iw \
     wireless-tools \
+    hostapd \
+    dnsmasq \
     # Bluetooth tools
     bluez \
     bluetooth \

@@ -1,0 +1,24 @@
+# hostapd configuration for INTERCEPT WiFi hotspot
+
+interface=wlan0
+driver=nl80211
+
+# SSID - Network name
+ssid=intercept-setup
+
+# Channel
+channel=6
+
+# Mode
+hw_mode=g
+
+# 802.11n support
+ieee80211n=1
+wmm_enabled=1
+
+# No authentication (open network for setup)
+auth_algs=1
+wpa=0
+
+# Ignore broadcast SSID requests (0 = broadcast, 1 = hide)
+ignore_broadcast_ssid=0
