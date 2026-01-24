@@ -12,11 +12,12 @@ This document outlines a comprehensive plan to migrate INTERCEPT from a monolith
 
 ### Key Benefits
 
-✅ **Easier Updates** - Application updates independent of OS
-✅ **Better Security** - Isolation between services, no privileged mode
+✅ **Easier Updates** - Application updates independent of OS via container images
+✅ **Auto-Updates** - Watchtower automatically pulls and deploys new versions
+✅ **Auto-Healing** - Crashed containers automatically restart
 ✅ **Simpler Maintenance** - Container restart vs full system reboot
-✅ **Modular Architecture** - Enable/disable features independently
-✅ **Reduced SD Card Wear** - Strategic use of tmpfs for high I/O operations
+✅ **Complete Package** - All INTERCEPT features in one container
+✅ **WiFi Captive Portal** - Zero-config setup via mobile device
 ✅ **Professional Deployment** - Aligned with modern DevOps practices
 
 ---
@@ -85,47 +86,33 @@ This document outlines a comprehensive plan to migrate INTERCEPT from a monolith
     │      (/opt/intercept/docker-compose.yml)     │
     └────────┬─────────────────────────────────────┘
              │
-    ┌────────┴──────────────────────────────────────────────┐
-    │                                                        │
-┌───┴────────┐  ┌──────────┐  ┌──────────┐  ┌─────────────┐
-│intercept-  │  │intercept-│  │intercept-│  │intercept-   │
-│core        │  │adsb      │  │acars     │  │pager        │
-│            │  │          │  │          │  │             │
-│Flask UI    │  │dump1090  │  │acarsdec  │  │multimon-ng  │
-│Orchestrator│  │tar1090   │  │          │  │rtl_fm       │
-└────────────┘  └──────────┘  └──────────┘  └─────────────┘
-       │
-┌──────┴────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐
-│intercept-     │  │intercept-│  │intercept-│  │watchtower│
-│sensors        │  │wifi      │  │bluetooth │  │          │
-│               │  │          │  │          │  │Auto-     │
-│rtl_433        │  │aircrack  │  │bleak     │  │updates   │
-└───────────────┘  └──────────┘  └──────────┘  └──────────┘
-       │
-┌──────┴────────┐  ┌──────────┐
-│intercept-     │  │autoheal  │
-│scanner        │  │          │
-│               │  │Health    │
-│rtl_fm + audio │  │monitor   │
-└───────────────┘  └──────────┘
+    ┌────────┴───────────────────────────────┐
+    │                                        │
+┌───┴──────────┐  ┌──────────┐  ┌──────────┐
+│  intercept   │  │watchtower│  │autoheal  │
+│              │  │          │  │          │
+│ COMPLETE APP │  │Auto-     │  │Health    │
+│ - Flask UI   │  │updates   │  │monitor   │
+│ - Pager      │  │          │  │          │
+│ - ADS-B      │  │          │  │          │
+│ - WiFi       │  │          │  │          │
+│ - Bluetooth  │  │          │  │          │
+│ - TSCM       │  │          │  │          │
+│ - ALL modes  │  │          │  │          │
+└──────────────┘  └──────────┘  └──────────┘
 ```
 
 ### Container Breakdown
 
 | Container | Base Image | Purpose | Size Est. | Required |
 |-----------|------------|---------|-----------|----------|
-| **intercept-core** | python:3.11-slim | Web UI, API, orchestration | ~200MB | ✅ Yes |
-| **intercept-adsb** | debian:bookworm-slim | ADS-B tracking (dump1090, tar1090) | ~150MB | Optional |
-| **intercept-acars** | debian:bookworm-slim | ACARS messages (acarsdec) | ~100MB | Optional |
-| **intercept-pager** | debian:bookworm-slim | Pager decoding (multimon-ng, rtl_fm) | ~80MB | Optional |
-| **intercept-sensors** | debian:bookworm-slim | 433MHz sensors (rtl_433) | ~80MB | Optional |
-| **intercept-wifi** | kalilinux/kali-rolling | WiFi scanning (aircrack-ng) | ~300MB | Optional |
-| **intercept-bluetooth** | python:3.11-slim | Bluetooth scanning (bleak) | ~150MB | Optional |
-| **intercept-scanner** | debian:bookworm-slim | Frequency scanner + audio | ~100MB | Optional |
+| **intercept** | debian:bookworm-slim | Complete INTERCEPT app with all tools | ~800MB | ✅ Yes |
 | **watchtower** | containrrr/watchtower | Auto container updates | ~15MB | Optional |
-| **autoheal** | willfarrell/autoheal | Health monitoring | ~10MB | Optional |
+| **autoheal** | willfarrell/autoheal | Health monitoring & auto-restart | ~10MB | Optional |
 
-**Total Stack Size:** ~1.2GB (vs current ~3-4GB monolithic image)
+**Total Stack Size:** ~825MB (vs current ~3-4GB monolithic image)
+
+**Note:** Single container approach keeps INTERCEPT's complete feature set intact while gaining containerization benefits.
 
 ---
 
@@ -133,301 +120,137 @@ This document outlines a comprehensive plan to migrate INTERCEPT from a monolith
 
 ### Phase 1: Container Development (Weeks 1-3)
 
-#### 1.1 Create Base Container Structure
+#### 1.1 Create Container Structure
 
 ```
 intercept/
-├── containers/
-│   ├── core/
-│   │   ├── Dockerfile
-│   │   ├── entrypoint.sh
-│   │   └── requirements.txt
-│   ├── adsb/
-│   │   ├── Dockerfile
-│   │   ├── build-dump1090.sh
-│   │   └── entrypoint.sh
-│   ├── acars/
-│   │   ├── Dockerfile
-│   │   ├── build-acarsdec.sh
-│   │   └── entrypoint.sh
-│   ├── pager/
-│   │   ├── Dockerfile
-│   │   └── entrypoint.sh
-│   ├── sensors/
-│   │   ├── Dockerfile
-│   │   └── entrypoint.sh
-│   ├── wifi/
-│   │   ├── Dockerfile
-│   │   └── entrypoint.sh
-│   ├── bluetooth/
-│   │   ├── Dockerfile
-│   │   └── entrypoint.sh
-│   └── scanner/
-│       ├── Dockerfile
-│       └── entrypoint.sh
-├── docker-compose.yml
-├── docker-compose.override.yml.example
-└── .env.example
+├── Dockerfile                  # Single container with all dependencies
+├── docker-compose.yml          # Orchestration for 3 containers
+├── .env.example                # Environment configuration
+├── bin/                        # Installation & management scripts
+│   ├── intercept-init          # Initial setup script
+│   ├── intercept-update        # Update script
+│   ├── intercept-up            # Start containers
+│   ├── intercept-down          # Stop containers
+│   └── intercept-logs          # View logs
+└── hotspot/                    # WiFi captive portal
+    ├── hotspot-app.py          # Captive portal Flask app
+    ├── hostapd.conf.template   # Hostapd configuration
+    └── dnsmasq.conf.template   # DNS configuration
 ```
 
-#### 1.2 Core Container Dockerfile
+#### 1.2 INTERCEPT Container Dockerfile
 
 ```dockerfile
-# containers/core/Dockerfile
-FROM python:3.11-slim
+# Dockerfile
+FROM debian:bookworm-slim
 
-# Install minimal system dependencies
+# Install ALL system dependencies (SDR tools, Python, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
+    # Core utilities
+    curl ca-certificates git \
+    # Python
+    python3 python3-pip python3-venv \
+    # RTL-SDR and tools
+    rtl-sdr librtlsdr-dev \
+    # Decoders
+    multimon-ng rtl-433 \
+    # WiFi tools
+    aircrack-ng wireless-tools iw \
+    # Bluetooth tools
+    bluez python3-bluez \
+    # Build tools for dump1090 and acarsdec
+    build-essential libncurses-dev pkg-config \
+    # GPS support
+    gpsd gpsd-clients \
+    # Audio support
+    sox libsox-fmt-all \
     && rm -rf /var/lib/apt/lists/*
 
-# Create app user (non-root)
-RUN useradd -m -u 1000 intercept && \
-    mkdir -p /app /data && \
-    chown -R intercept:intercept /app /data
+# Build dump1090-fa from source
+RUN git clone --depth 1 https://github.com/flightaware/dump1090.git /tmp/dump1090 && \
+    cd /tmp/dump1090 && \
+    make RTLSDR=yes && \
+    cp dump1090 /usr/local/bin/ && \
+    mkdir -p /var/www/html && \
+    cp -r public_html/* /var/www/html/ && \
+    cd / && rm -rf /tmp/dump1090
 
+# Build acarsdec from source
+RUN git clone --depth 1 https://github.com/TLeconte/acarsdec.git /tmp/acarsdec && \
+    cd /tmp/acarsdec && \
+    make && \
+    cp acarsdec /usr/local/bin/ && \
+    cd / && rm -rf /tmp/acarsdec
+
+# Create app directory
 WORKDIR /app
 
-# Copy requirements and install Python deps
+# Copy Python requirements and install
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
-# Copy application code
+# Copy COMPLETE INTERCEPT application
 COPY app.py config.py intercept.py ./
 COPY routes/ ./routes/
 COPY utils/ ./utils/
 COPY data/ ./data/
 COPY templates/ ./templates/
 COPY static/ ./static/
+COPY aircraft_db.json oui_database.json ./
 
-# Switch to non-root user
-USER intercept
+# Create data directory
+RUN mkdir -p /app/instance
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:5050/health || exit 1
 
 # Expose port
 EXPOSE 5050
 
-# Run application
-CMD ["python", "intercept.py", "--host", "0.0.0.0"]
+# Run INTERCEPT
+CMD ["python3", "intercept.py", "--host", "0.0.0.0"]
 ```
 
-#### 1.3 ADSB Container Dockerfile
-
-```dockerfile
-# containers/adsb/Dockerfile
-FROM debian:bookworm-slim AS builder
-
-# Build dump1090-fa from source
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git build-essential libncurses-dev librtlsdr-dev pkg-config \
-    && git clone --depth 1 https://github.com/flightaware/dump1090.git /tmp/dump1090 \
-    && cd /tmp/dump1090 \
-    && make RTLSDR=yes \
-    && rm -rf /var/lib/apt/lists/*
-
-FROM debian:bookworm-slim
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    librtlsdr0 libncurses6 lighttpd \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy built binary from builder
-COPY --from=builder /tmp/dump1090/dump1090 /usr/local/bin/
-COPY --from=builder /tmp/dump1090/public_html /var/www/html/
-
-# Create data directory
-RUN mkdir -p /data/adsb && chmod 777 /data/adsb
-
-EXPOSE 30003 30005 8080
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
-  CMD netstat -an | grep -q ':30003' || exit 1
-
-CMD ["dump1090", "--net", "--quiet"]
-```
-
-#### 1.4 Docker Compose Configuration
+#### 1.3 Docker Compose Configuration
 
 ```yaml
 # docker-compose.yml
 version: '3.8'
 
 services:
-  core:
-    container_name: intercept-core
+  intercept:
+    container_name: intercept
     build:
       context: .
-      dockerfile: containers/core/Dockerfile
-    image: intercept/core:${VERSION:-latest}
+      dockerfile: Dockerfile
+    image: intercept/intercept:${VERSION:-latest}
     restart: unless-stopped
-    ports:
-      - "${INTERCEPT_PORT:-5050}:5050"
+    privileged: true  # Required for USB SDR access and WiFi monitor mode
+    network_mode: host  # Required for WiFi monitor mode
     volumes:
-      - ./data/config:/data/config
-      - ./data/instance:/app/instance
+      - ./data:/app/instance
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     environment:
       - INTERCEPT_HOST=0.0.0.0
       - INTERCEPT_PORT=5050
       - INTERCEPT_LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - INTERCEPT_DEBUG=${DEBUG:-false}
     tmpfs:
-      - /tmp:size=64M
+      - /tmp:size=128M
+      - /var/log:size=64M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
-    networks:
-      - intercept-network
-
-  adsb:
-    container_name: intercept-adsb
-    build:
-      context: .
-      dockerfile: containers/adsb/Dockerfile
-    image: intercept/adsb:${VERSION:-latest}
-    restart: unless-stopped
-    devices:
-      - "c 189:* rwm"  # USB character devices
-    volumes:
-      - ./data/adsb:/data/adsb
-      - /etc/localtime:/etc/localtime:ro
-    environment:
-      - ADSB_ENABLED=${ADSB_ENABLED:-true}
-    tmpfs:
-      - /tmp:size=64M
-      - /var/log:size=32M
-    networks:
-      - intercept-network
-    profiles:
-      - adsb
-      - full
-
-  acars:
-    container_name: intercept-acars
-    build:
-      context: .
-      dockerfile: containers/acars/Dockerfile
-    image: intercept/acars:${VERSION:-latest}
-    restart: unless-stopped
-    devices:
-      - "c 189:* rwm"
-    volumes:
-      - ./data/acars:/data/acars
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - intercept-network
-    profiles:
-      - acars
-      - full
-
-  pager:
-    container_name: intercept-pager
-    build:
-      context: .
-      dockerfile: containers/pager/Dockerfile
-    image: intercept/pager:${VERSION:-latest}
-    restart: unless-stopped
-    devices:
-      - "c 189:* rwm"
-    volumes:
-      - ./data/pager:/data/pager
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - intercept-network
-    profiles:
-      - pager
-      - full
-
-  sensors:
-    container_name: intercept-sensors
-    build:
-      context: .
-      dockerfile: containers/sensors/Dockerfile
-    image: intercept/sensors:${VERSION:-latest}
-    restart: unless-stopped
-    devices:
-      - "c 189:* rwm"
-    volumes:
-      - ./data/sensors:/data/sensors
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - intercept-network
-    profiles:
-      - sensors
-      - full
-
-  wifi:
-    container_name: intercept-wifi
-    build:
-      context: .
-      dockerfile: containers/wifi/Dockerfile
-    image: intercept/wifi:${VERSION:-latest}
-    restart: unless-stopped
-    network_mode: host  # Required for monitor mode
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
-    volumes:
-      - ./data/wifi:/data/wifi
-    tmpfs:
-      - /tmp:size=128M
-    profiles:
-      - wifi
-      - full
-
-  bluetooth:
-    container_name: intercept-bluetooth
-    build:
-      context: .
-      dockerfile: containers/bluetooth/Dockerfile
-    image: intercept/bluetooth:${VERSION:-latest}
-    restart: unless-stopped
-    cap_add:
-      - NET_ADMIN
-    volumes:
-      - ./data/bluetooth:/data/bluetooth
-      - /var/run/dbus:/var/run/dbus:ro
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - intercept-network
-    profiles:
-      - bluetooth
-      - full
-
-  scanner:
-    container_name: intercept-scanner
-    build:
-      context: .
-      dockerfile: containers/scanner/Dockerfile
-    image: intercept/scanner:${VERSION:-latest}
-    restart: unless-stopped
-    devices:
-      - "c 189:* rwm"
-    volumes:
-      - ./data/scanner:/data/scanner
-    tmpfs:
-      - /tmp:size=64M
-    networks:
-      - intercept-network
-    profiles:
-      - scanner
-      - full
+      start_period: 60s
 
   # Auto-update containers (optional)
   watchtower:
-    container_name: intercept-watchtower
+    container_name: watchtower
     image: containrrr/watchtower:latest
     restart: unless-stopped
     volumes:
@@ -435,41 +258,20 @@ services:
     environment:
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_POLL_INTERVAL=86400  # Check daily
-      - WATCHTOWER_INCLUDE_STOPPED=true
+      - WATCHTOWER_INCLUDE_STOPPED=false
       - WATCHTOWER_REVIVE_STOPPED=false
-    profiles:
-      - auto-update
-      - full
 
   # Auto-restart unhealthy containers (optional)
   autoheal:
-    container_name: intercept-autoheal
+    container_name: autoheal
     image: willfarrell/autoheal:latest
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - AUTOHEAL_CONTAINER_LABEL=all
-      - AUTOHEAL_INTERVAL=10
-      - AUTOHEAL_START_PERIOD=30
-    profiles:
-      - auto-heal
-      - full
-
-networks:
-  intercept-network:
-    driver: bridge
-
-volumes:
-  config:
-  instance:
-  adsb:
-  acars:
-  pager:
-  sensors:
-  wifi:
-  bluetooth:
-  scanner:
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
 ```
 
 ### Phase 2: Installation Scripts (Week 4)

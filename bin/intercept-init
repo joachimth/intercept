@@ -1,0 +1,172 @@
+#!/bin/bash
+# intercept-init - INTERCEPT installation script
+# Installs Docker, clones repository, and sets up INTERCEPT
+
+set -e
+
+INSTALL_DIR="/opt/intercept"
+REPO_URL="https://github.com/smittix/intercept.git"
+VERSION="latest"
+
+echo "================================================"
+echo "  INTERCEPT Container Setup"
+echo "  Signal Intelligence Platform"
+echo "================================================"
+echo ""
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ This script must be run as root (use sudo)"
+   exit 1
+fi
+
+# Detect architecture
+ARCH=$(uname -m)
+echo "📟 Detected architecture: $ARCH"
+
+if [[ "$ARCH" != "armv7l" && "$ARCH" != "aarch64" && "$ARCH" != "x86_64" ]]; then
+    echo "⚠️  Warning: Unsupported architecture: $ARCH"
+    echo "   INTERCEPT is tested on armv7l, aarch64, and x86_64"
+    read -p "   Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+echo ""
+echo "📦 Installing system dependencies..."
+
+# Install minimal system dependencies
+apt-get update
+apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    jq \
+    ca-certificates \
+    gnupg \
+    lsb-release
+
+echo ""
+echo "🐋 Checking Docker installation..."
+
+# Install Docker if not already installed
+if ! command -v docker &> /dev/null; then
+    echo "   Installing Docker..."
+    curl -fsSL https://get.docker.com | sh
+
+    # Add pi user to docker group if exists
+    if id -u pi &>/dev/null; then
+        usermod -aG docker pi
+        echo "   ✅ Added 'pi' user to docker group"
+    fi
+
+    echo "   ✅ Docker installed successfully"
+else
+    echo "   ✅ Docker already installed ($(docker --version))"
+fi
+
+# Install Docker Compose if not already installed
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    echo ""
+    echo "📦 Installing Docker Compose..."
+    COMPOSE_VERSION=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.tag_name')
+    curl -L "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)" \
+        -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    echo "   ✅ Docker Compose installed successfully"
+else
+    echo "   ✅ Docker Compose already installed"
+fi
+
+echo ""
+echo "🔧 Configuring system..."
+
+# Blacklist RTL-SDR kernel drivers
+if [ ! -f /etc/modprobe.d/blacklist-rtl-sdr.conf ]; then
+    echo "   Blacklisting RTL-SDR kernel modules..."
+    cat > /etc/modprobe.d/blacklist-rtl-sdr.conf <<EOF
+# Blacklist DVB-T drivers that interfere with RTL-SDR
+blacklist dvb_usb_rtl28xxu
+blacklist rtl2832
+blacklist rtl2830
+EOF
+    echo "   ✅ RTL-SDR kernel modules blacklisted"
+fi
+
+# Enable Docker service
+systemctl enable docker
+systemctl start docker
+
+echo ""
+echo "📥 Setting up INTERCEPT..."
+
+# Clone or update repository
+if [ -d "$INSTALL_DIR" ]; then
+    echo "   Updating existing installation..."
+    cd "$INSTALL_DIR"
+    git fetch origin
+    git pull --ff-only origin main
+else
+    echo "   Cloning repository..."
+    git clone "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+fi
+
+# Create data directory
+echo "   Creating data directories..."
+mkdir -p "$INSTALL_DIR/data"
+chmod 777 "$INSTALL_DIR/data"
+
+# Create .env file if not exists
+if [ ! -f .env ]; then
+    echo "   Creating environment configuration..."
+    cat > .env <<EOF
+# INTERCEPT Environment Configuration
+INTERCEPT_HOST=0.0.0.0
+INTERCEPT_PORT=5050
+INTERCEPT_LOG_LEVEL=INFO
+INTERCEPT_DEBUG=false
+EOF
+fi
+
+echo ""
+echo "🔗 Installing CLI tools..."
+
+# Install CLI symlinks
+chmod +x bin/intercept-*
+ln -sf "$INSTALL_DIR/bin/intercept-init" /usr/local/bin/intercept-init
+ln -sf "$INSTALL_DIR/bin/intercept-update" /usr/local/bin/intercept-update
+ln -sf "$INSTALL_DIR/bin/intercept-up" /usr/local/bin/intercept-up
+ln -sf "$INSTALL_DIR/bin/intercept-down" /usr/local/bin/intercept-down
+ln -sf "$INSTALL_DIR/bin/intercept-logs" /usr/local/bin/intercept-logs
+ln -sf "$INSTALL_DIR/bin/intercept-restart" /usr/local/bin/intercept-restart
+
+echo "   ✅ CLI tools installed"
+
+echo ""
+echo "================================================"
+echo "  ✅ INTERCEPT Installation Complete!"
+echo "================================================"
+echo ""
+echo "📋 Next steps:"
+echo ""
+echo "  1. Edit configuration (optional):"
+echo "     nano $INSTALL_DIR/.env"
+echo ""
+echo "  2. Start INTERCEPT:"
+echo "     intercept-up"
+echo ""
+echo "  3. View logs:"
+echo "     intercept-logs"
+echo ""
+echo "  4. Access web interface:"
+echo "     http://$(hostname -I | awk '{print $1}'):5050"
+echo "     or"
+echo "     http://$(hostname).local:5050"
+echo ""
+echo "📚 Documentation: https://github.com/smittix/intercept"
+echo ""
+echo "💡 Tip: If you're not root, you may need to log out and back in"
+echo "   for docker group permissions to take effect."
+echo ""

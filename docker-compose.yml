@@ -5,33 +5,65 @@ services:
   intercept:
     build: .
     container_name: intercept
-    ports:
-      - "5050:5050"
-    # Privileged mode required for USB SDR device access
-    # Alternatively, use device mapping (see below)
+    image: intercept/intercept:latest
+    # Privileged mode required for USB SDR device access and WiFi monitor mode
     privileged: true
-    # USB device mapping (alternative to privileged mode)
-    # devices:
-    #   - /dev/bus/usb:/dev/bus/usb
-    # volumes:
+    # Host network mode required for WiFi monitor mode
+    network_mode: host
+    volumes:
       # Persist data directory
-      # - ./data:/app/data
-      # Optional: mount logs directory
-      # - ./logs:/app/logs
+      - ./data:/app/instance
+      # System time synchronization
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     environment:
       - INTERCEPT_HOST=0.0.0.0
       - INTERCEPT_PORT=5050
       - INTERCEPT_LOG_LEVEL=INFO
-    # Network mode for WiFi scanning (requires host network)
-    # network_mode: host
+      - INTERCEPT_DEBUG=false
+    # tmpfs for reducing SD card wear
+    tmpfs:
+      - /tmp:size=128M
+      - /var/log:size=64M
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:5050/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 60s
 
-# Optional: Add volume for persistent SQLite database
-# volumes:
-#   intercept-data:
+  # Watchtower - Auto-updates container images
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400  # Check for updates daily
+      - WATCHTOWER_INCLUDE_STOPPED=false
+      - WATCHTOWER_REVIVE_STOPPED=false
+    # Uncomment to enable watchtower
+    # profiles:
+    #   - autoupdate
+
+  # Autoheal - Auto-restarts unhealthy containers
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: autoheal
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+      - AUTOHEAL_INTERVAL=30
+      - AUTOHEAL_START_PERIOD=60
+    # Uncomment to enable autoheal
+    # profiles:
+    #   - autoheal
+
+# Persistent data volume
+volumes:
+  data:

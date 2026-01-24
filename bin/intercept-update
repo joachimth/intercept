@@ -1,0 +1,85 @@
+#!/bin/bash
+# intercept-update - Update INTERCEPT to latest version
+
+set -e
+
+INSTALL_DIR="/opt/intercept"
+BACKUP_DIR="$INSTALL_DIR/data/backups"
+
+echo "================================================"
+echo "  INTERCEPT Update"
+echo "================================================"
+echo ""
+
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+   echo "❌ This script must be run as root (use sudo)"
+   exit 1
+fi
+
+# Check if INTERCEPT is installed
+if [ ! -d "$INSTALL_DIR" ]; then
+    echo "❌ INTERCEPT not found at $INSTALL_DIR"
+    echo "   Run 'intercept-init' to install"
+    exit 1
+fi
+
+cd "$INSTALL_DIR"
+
+echo "📦 Current version:"
+git log -1 --format="%h - %s (%cr)" || echo "Unknown"
+
+echo ""
+echo "🔄 Checking for updates..."
+
+# Fetch latest changes
+git fetch origin
+
+# Check if updates are available
+LOCAL=$(git rev-parse @)
+REMOTE=$(git rev-parse @{u})
+
+if [ $LOCAL = $REMOTE ]; then
+    echo "   ✅ Already up to date!"
+else
+    echo "   📥 Updates available"
+
+    # Create backup
+    echo ""
+    echo "💾 Creating backup..."
+    mkdir -p "$BACKUP_DIR"
+    BACKUP_FILE="$BACKUP_DIR/intercept_$(date +%Y%m%d_%H%M%S).tar.gz"
+    tar -czf "$BACKUP_FILE" -C "$INSTALL_DIR" data .env 2>/dev/null || true
+    echo "   ✅ Backup saved: $BACKUP_FILE"
+
+    # Pull updates
+    echo ""
+    echo "📥 Pulling latest code..."
+    git pull --ff-only origin main
+
+    echo "   ✅ Code updated"
+fi
+
+echo ""
+echo "🐋 Updating Docker images..."
+docker-compose pull
+
+echo ""
+echo "🔄 Restarting containers..."
+docker-compose up -d
+
+echo ""
+echo "================================================"
+echo "  ✅ Update Complete!"
+echo "================================================"
+echo ""
+echo "📦 New version:"
+git log -1 --format="%h - %s (%cr)"
+
+echo ""
+echo "📋 View logs:"
+echo "   intercept-logs"
+echo ""
+echo "🌐 Access web interface:"
+echo "   http://$(hostname -I | awk '{print $1}'):5050"
+echo ""
