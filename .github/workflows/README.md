@@ -99,26 +99,6 @@ gh workflow run build-rpi-image.yml
 
 ---
 
-### 3. Custom OS Build (DEPRECATED) (`build-custom-os.yml`)
-
-**Status:** ⚠️ Deprecated - replaced by `build-rpi-image.yml`
-
-**Old approach:**
-- Installed all dependencies directly on OS
-- Monolithic setup (no Docker)
-- Larger images (~3-4GB)
-- Harder to update
-
-**New approach:**
-- Docker-based (modular)
-- Smaller images (~1.5-2GB)
-- Easy updates (`intercept-update`)
-- Container isolation
-
-**Will be removed in:** v4.0.0
-
----
-
 ## Workflow Architecture
 
 ```
