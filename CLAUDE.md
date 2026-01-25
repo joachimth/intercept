@@ -1,6 +1,6 @@
 # CLAUDE.md - AI Assistant Guide for INTERCEPT
 
-> **Last Updated:** 2026-01-24
+> **Last Updated:** 2026-01-25
 > **Version:** 2.9.5
 > **Purpose:** Comprehensive guide for AI assistants working on the INTERCEPT codebase
 
@@ -19,6 +19,8 @@
 9. [Security Considerations](#security-considerations)
 10. [External Dependencies](#external-dependencies)
 11. [Troubleshooting Guide](#troubleshooting-guide)
+12. [Management Scripts](#management-scripts-bin)
+13. [Hotspot Captive Portal](#hotspot-captive-portal-hotspot)
 
 ---
 
@@ -271,9 +273,27 @@ intercept/
 │   ├── SECURITY.md
 │   └── TROUBLESHOOTING.md
 │
+├── bin/                        # Management scripts (CLI tools)
+│   ├── intercept-init          # Initial system setup
+│   ├── intercept-up            # Start containers
+│   ├── intercept-down          # Stop containers
+│   ├── intercept-restart       # Restart containers
+│   ├── intercept-logs          # View container logs
+│   ├── intercept-update        # Update to latest version
+│   └── README.md               # CLI documentation
+│
+├── hotspot/                    # WiFi captive portal for setup
+│   ├── hotspot-app.py          # Flask captive portal
+│   ├── start-hotspot.sh        # Hotspot startup script
+│   ├── hostapd.conf.template   # WiFi AP configuration
+│   ├── dnsmasq.conf.template   # DNS/DHCP configuration
+│   └── README.md               # Hotspot documentation
+│
 ├── .github/                    # GitHub configuration
 │   ├── workflows/
-│   │   └── build-custom-os.yml  # Monthly RPi image builds
+│   │   ├── build-custom-os.yml # Monthly RPi OS image builds
+│   │   ├── build-rpi-image.yml # RPi image creation workflow
+│   │   └── docker-build.yml    # Docker image builds
 │   └── scripts/
 │       ├── customize-image.sh   # Image customization
 │       └── intercept.service    # Systemd service file
@@ -1372,6 +1392,85 @@ pager_logger.setLevel(logging.DEBUG)
 
 ---
 
+## Management Scripts (bin/)
+
+The `bin/` directory contains CLI tools for managing INTERCEPT in Docker deployments.
+
+### Installation
+
+```bash
+# One-liner installation
+curl -fsSL https://raw.githubusercontent.com/smittix/intercept/main/bin/intercept-init | sudo bash
+
+# Or manual installation
+git clone https://github.com/smittix/intercept.git
+cd intercept
+sudo ./bin/intercept-init
+```
+
+### Available Commands
+
+| Command | Purpose | Example |
+|---------|---------|---------|
+| `intercept-init` | Initial system setup (Docker, modules, directories) | `sudo intercept-init` |
+| `intercept-up` | Start INTERCEPT containers | `intercept-up` |
+| `intercept-down` | Stop containers | `intercept-down --volumes` |
+| `intercept-restart` | Restart containers | `intercept-restart` |
+| `intercept-logs` | View container logs (follow mode) | `intercept-logs --tail=50` |
+| `intercept-update` | Update to latest version | `sudo intercept-update` |
+
+### Installation Paths (Docker deployment)
+
+| Path | Purpose |
+|------|---------|
+| `/opt/intercept` | Installation directory |
+| `/opt/intercept/data` | Persistent data (SQLite DB, configs) |
+| `/opt/intercept/data/backups` | Configuration backups |
+| `/opt/intercept/.env` | Environment variables |
+| `/usr/local/bin/intercept-*` | CLI tools (symlinks) |
+
+---
+
+## Hotspot Captive Portal (hotspot/)
+
+Automatic WiFi setup for headless INTERCEPT deployments (Raspberry Pi).
+
+### How It Works
+
+1. **Boot Detection**: System checks for network connectivity at boot
+2. **Hotspot Launch**: If no network found, starts WiFi hotspot (`intercept-setup`)
+3. **Captive Portal**: User connects via mobile device to open network
+4. **Configuration**: Web portal allows WiFi network selection and password entry
+5. **Connection**: System connects to selected network and INTERCEPT becomes available
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `hotspot-app.py` | Flask captive portal (WiFi scanning, configuration) |
+| `start-hotspot.sh` | Startup script (IP config, hostapd, dnsmasq) |
+| `hostapd.conf.template` | WiFi access point configuration |
+| `dnsmasq.conf.template` | DNS/DHCP configuration for captive portal |
+
+### Captive Portal Detection
+
+The portal responds to common detection URLs:
+- `/generate_204` - Android detection
+- `/hotspot-detect.html` - iOS detection
+- All DNS queries redirect to `192.168.199.1`
+
+### Manual Usage
+
+```bash
+# Start hotspot manually
+sudo /opt/intercept/hotspot/start-hotspot.sh
+
+# Connect to: intercept-setup (no password)
+# Portal at: http://192.168.199.1
+```
+
+---
+
 ## Quick Reference
 
 ### Start Application
@@ -1416,6 +1515,16 @@ docker compose up -d          # Start
 docker compose down           # Stop
 docker compose logs -f        # View logs
 docker compose up -d --build  # Rebuild
+```
+
+### Management Scripts (Production)
+
+```bash
+intercept-up              # Start containers
+intercept-down            # Stop containers
+intercept-restart         # Restart containers
+intercept-logs            # View logs (follow mode)
+sudo intercept-update     # Update to latest
 ```
 
 ### API Endpoints
@@ -1472,6 +1581,7 @@ docker compose up -d --build  # Rebuild
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.1.0 | 2026-01-25 | Added bin/ management scripts, hotspot/ captive portal, additional GitHub workflows |
 | 1.0.0 | 2026-01-24 | Initial comprehensive CLAUDE.md creation |
 
 ---
