@@ -1,0 +1,395 @@
+name: Build Raspberry Pi Image (Docker-based)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rpi_os_version:
+        description: 'Raspberry Pi OS version date (e.g., 2024-11-19)'
+        required: false
+        default: '2024-11-19'
+  schedule:
+    # Build monthly on the 1st at 03:00 UTC
+    - cron: '0 3 1 * *'
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths:
+      - '.github/workflows/build-rpi-image.yml'
+      - '.github/scripts/**'
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - 'bin/**'
+  release:
+    types: [published]
+
+env:
+  IMAGE_NAME: intercept-rpi
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up environment variables
+        id: vars
+        run: |
+          # Get version from tag or use 'latest'
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="latest"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+          # Set RPI OS version
+          RPI_OS_VERSION="${{ github.event.inputs.rpi_os_version || '2024-11-19' }}"
+          echo "RPI_OS_VERSION=$RPI_OS_VERSION" >> $GITHUB_OUTPUT
+
+          # Construct image filename
+          IMAGE_FILENAME="${IMAGE_NAME}-${VERSION}.img"
+          echo "IMAGE_FILENAME=$IMAGE_FILENAME" >> $GITHUB_OUTPUT
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            wget curl unzip xz-utils kpartx qemu-user-static \
+            binfmt-support parted fdisk dosfstools e2fsprogs \
+            systemd-container rsync
+
+      - name: Download Raspberry Pi OS image
+        run: |
+          echo "Downloading Raspberry Pi OS Lite (latest)..."
+          wget -O raspios.img.xz "https://downloads.raspberrypi.org/raspios_lite_armhf_latest" || {
+            RPI_OS_VERSION="${{ steps.vars.outputs.RPI_OS_VERSION }}"
+            wget -O raspios.img.xz "https://downloads.raspberrypi.org/raspios_lite_armhf/images/raspios_lite_armhf-${RPI_OS_VERSION}/${RPI_OS_VERSION}-raspios-bookworm-armhf-lite.img.xz"
+          }
+
+          echo "Extracting image..."
+          xz -d raspios.img.xz
+          mv raspios.img base-image.img
+
+      - name: Expand image size
+        run: |
+          # Add 2GB for Docker images and data
+          dd if=/dev/zero bs=1M count=2048 >> base-image.img
+
+          # Expand the root partition
+          echo ", +" | sudo sfdisk -N 2 base-image.img
+
+          # Set up loop device
+          LOOP_DEVICE=$(sudo losetup -fP --show base-image.img)
+          echo "LOOP_DEVICE=$LOOP_DEVICE" >> $GITHUB_ENV
+
+          # Resize the filesystem
+          sudo e2fsck -f -y ${LOOP_DEVICE}p2 || true
+          sudo resize2fs ${LOOP_DEVICE}p2
+
+          # Detach loop device for now
+          sudo losetup -d $LOOP_DEVICE
+
+      - name: Mount image and customize
+        run: |
+          # Set up loop device
+          LOOP_DEVICE=$(sudo losetup -fP --show base-image.img)
+          echo "Using loop device: $LOOP_DEVICE"
+
+          # Create mount points
+          sudo mkdir -p /mnt/rpi-boot /mnt/rpi-root
+
+          # Mount partitions
+          sudo mount ${LOOP_DEVICE}p1 /mnt/rpi-boot
+          sudo mount ${LOOP_DEVICE}p2 /mnt/rpi-root
+
+          # Copy INTERCEPT repository
+          echo "Copying INTERCEPT files to image..."
+          sudo mkdir -p /mnt/rpi-root/opt/intercept
+          sudo rsync -a --exclude='.git' \
+            --exclude='base-image.img' \
+            --exclude='*.img' --exclude='*.img.xz' \
+            --exclude='*.iso' --exclude='__pycache__' \
+            --exclude='*.pyc' --exclude='.pytest_cache' \
+            --exclude='venv' \
+            ./ /mnt/rpi-root/opt/intercept/
+
+          # Create data directory
+          sudo mkdir -p /mnt/rpi-root/opt/intercept/data
+
+          # Enable SSH
+          sudo touch /mnt/rpi-boot/ssh
+
+          # Store loop device for later
+          echo "LOOP_DEVICE=$LOOP_DEVICE" >> $GITHUB_ENV
+
+      - name: Install Docker and INTERCEPT in chroot
+        run: |
+          # Copy qemu-arm-static for ARM emulation
+          sudo cp /usr/bin/qemu-arm-static /mnt/rpi-root/usr/bin/
+
+          # Mount necessary pseudo-filesystems for chroot
+          echo "Mounting pseudo-filesystems for chroot..."
+          sudo mount -t proc proc /mnt/rpi-root/proc
+          sudo mount -t sysfs sys /mnt/rpi-root/sys
+          sudo mount -o bind /dev /mnt/rpi-root/dev
+          sudo mount -o bind /dev/pts /mnt/rpi-root/dev/pts
+
+          # Create customization script
+          cat << 'CHROOT_EOF' | sudo tee /mnt/rpi-root/tmp/setup.sh > /dev/null
+          #!/bin/bash
+          set -e
+
+          echo "Installing Docker..."
+          curl -fsSL https://get.docker.com | sh
+
+          echo "Adding pi user to docker group..."
+          usermod -aG docker pi || true
+
+          echo "Blacklisting RTL-SDR kernel modules..."
+          cat > /etc/modprobe.d/blacklist-rtl-sdr.conf <<EOF
+          blacklist dvb_usb_rtl28xxu
+          blacklist rtl2832
+          blacklist rtl2830
+          EOF
+
+          echo "Installing CLI tools..."
+          cd /opt/intercept
+          chmod +x bin/intercept-*
+          ln -sf /opt/intercept/bin/intercept-init /usr/local/bin/intercept-init
+          ln -sf /opt/intercept/bin/intercept-update /usr/local/bin/intercept-update
+          ln -sf /opt/intercept/bin/intercept-up /usr/local/bin/intercept-up
+          ln -sf /opt/intercept/bin/intercept-down /usr/local/bin/intercept-down
+          ln -sf /opt/intercept/bin/intercept-restart /usr/local/bin/intercept-restart
+          ln -sf /opt/intercept/bin/intercept-logs /usr/local/bin/intercept-logs
+
+          echo "Creating first-boot service..."
+          cat > /etc/systemd/system/intercept-firstboot.service <<'EOF'
+          [Unit]
+          Description=INTERCEPT First Boot Setup
+          After=network-online.target docker.service
+          Wants=network-online.target
+          ConditionPathExists=!/var/lib/intercept-setup-complete
+
+          [Service]
+          Type=oneshot
+          ExecStartPre=/bin/sleep 10
+          ExecStart=/bin/bash -c 'cd /opt/intercept && docker compose pull && docker compose up -d'
+          ExecStartPost=/bin/touch /var/lib/intercept-setup-complete
+          RemainAfterExit=yes
+          StandardOutput=journal
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl enable intercept-firstboot.service
+
+          echo "Creating INTERCEPT systemd service..."
+          cat > /etc/systemd/system/intercept.service <<'EOF'
+          [Unit]
+          Description=INTERCEPT SIGINT Platform
+          After=docker.service
+          Requires=docker.service
+          ConditionPathExists=/var/lib/intercept-setup-complete
+
+          [Service]
+          Type=oneshot
+          RemainAfterExit=yes
+          WorkingDirectory=/opt/intercept
+          ExecStart=/usr/bin/docker compose up -d
+          ExecStop=/usr/bin/docker compose down
+          StandardOutput=journal
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+
+          systemctl enable intercept.service
+
+          echo "Cleanup..."
+          apt-get clean
+          rm -rf /var/lib/apt/lists/*
+          rm -rf /tmp/*
+          rm -rf /var/tmp/*
+
+          echo "Setup complete!"
+          CHROOT_EOF
+
+          sudo chmod +x /mnt/rpi-root/tmp/setup.sh
+
+          # Run setup script in chroot
+          echo "Running setup script in chroot..."
+          sudo chroot /mnt/rpi-root /bin/bash /tmp/setup.sh
+
+          # Unmount pseudo-filesystems
+          echo "Unmounting pseudo-filesystems..."
+          sudo umount /mnt/rpi-root/dev/pts || true
+          sudo umount /mnt/rpi-root/dev || true
+          sudo umount /mnt/rpi-root/sys || true
+          sudo umount /mnt/rpi-root/proc || true
+
+          # Clean up
+          sudo rm /mnt/rpi-root/tmp/setup.sh 2>/dev/null || true
+          sudo rm /mnt/rpi-root/usr/bin/qemu-arm-static 2>/dev/null || true
+
+      - name: Unmount and cleanup
+        if: always()
+        run: |
+          sync
+          sudo umount /mnt/rpi-root/dev/pts 2>/dev/null || true
+          sudo umount /mnt/rpi-root/dev 2>/dev/null || true
+          sudo umount /mnt/rpi-root/sys 2>/dev/null || true
+          sudo umount /mnt/rpi-root/proc 2>/dev/null || true
+          sudo umount /mnt/rpi-boot || true
+          sudo umount /mnt/rpi-root || true
+          sudo losetup -d $LOOP_DEVICE || true
+          sudo rm -rf /mnt/rpi-boot /mnt/rpi-root
+
+      - name: Compress image
+        run: |
+          echo "Compressing image..."
+          IMAGE_FILENAME="${{ steps.vars.outputs.IMAGE_FILENAME }}"
+          mv base-image.img "$IMAGE_FILENAME"
+
+          # Compress with xz
+          xz -9 -T 0 "$IMAGE_FILENAME"
+
+          # Calculate checksums
+          sha256sum "${IMAGE_FILENAME}.xz" > "${IMAGE_FILENAME}.xz.sha256"
+
+      - name: Upload image as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.IMAGE_NAME }}-${{ steps.vars.outputs.VERSION }}
+          path: |
+            ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz
+            ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz.sha256
+          retention-days: 90
+
+      - name: Generate release tag
+        id: release_tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+          else
+            DATE=$(date +%Y.%m.%d)
+            echo "RELEASE_TAG=image-${DATE}" >> $GITHUB_OUTPUT
+            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.release_tag.outputs.RELEASE_TAG }}
+          name: INTERCEPT Raspberry Pi Image - ${{ steps.release_tag.outputs.RELEASE_TAG }}
+          prerelease: ${{ steps.release_tag.outputs.IS_PRERELEASE }}
+          files: |
+            ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz
+            ${{ steps.vars.outputs.IMAGE_FILENAME }}.xz.sha256
+          body: |
+            ## INTERCEPT Raspberry Pi OS Image (Docker-based)
+
+            **Version:** ${{ steps.vars.outputs.VERSION }}
+            **Base OS:** Raspberry Pi OS Lite (Bookworm)
+            **Architecture:** ARM (32-bit armhf)
+
+            ### What's Included
+            - ✅ Raspberry Pi OS Lite (minimal, fast boot)
+            - ✅ Docker + Docker Compose pre-installed
+            - ✅ INTERCEPT container auto-pulls on first boot
+            - ✅ Auto-starts on boot via systemd
+            - ✅ SSH enabled by default
+            - ✅ WiFi hotspot captive portal (if no network)
+            - ✅ All management scripts (intercept-up, intercept-down, etc.)
+
+            ### Quick Start
+
+            **1. Flash Image**
+            ```bash
+            # Download the .img.xz file
+            # Flash to SD card using Raspberry Pi Imager or:
+            xzcat intercept-rpi-*.img.xz | sudo dd of=/dev/sdX bs=4M status=progress
+            ```
+
+            **2. Boot Raspberry Pi**
+            - Insert SD card and power on
+            - First boot pulls Docker images (~3-5 minutes)
+            - Access INTERCEPT at: `http://intercept.local:5050`
+
+            **3. WiFi Setup (if needed)**
+            - If no Ethernet, device creates hotspot: `intercept-setup`
+            - Connect via mobile device
+            - Captive portal opens automatically
+            - Select WiFi network and enter password
+            - Device reboots and connects
+
+            ### Default Credentials
+            - **User:** `pi`
+            - **Password:** `raspberry` ⚠️ **CHANGE THIS!**
+
+            ### Management Commands
+            ```bash
+            intercept-up          # Start INTERCEPT
+            intercept-down        # Stop INTERCEPT
+            intercept-restart     # Restart INTERCEPT
+            intercept-logs        # View logs
+            intercept-update      # Update to latest version
+            ```
+
+            ### Manual Setup
+            If you prefer to install on existing Raspberry Pi:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/smittix/intercept/main/bin/intercept-init | sudo bash
+            ```
+
+            ### Supported Hardware
+            - Raspberry Pi 2 Model B (armv7+)
+            - Raspberry Pi 3 Model B/B+
+            - Raspberry Pi 4 Model B
+            - Raspberry Pi 5
+            - Raspberry Pi Zero 2 W
+
+            ### Container Details
+            - **Registry:** `smittix/intercept:latest`
+            - **Platforms:** linux/arm/v7, linux/arm64, linux/amd64
+            - **Size:** ~800MB (compressed)
+            - **Auto-updates:** Optional via Watchtower
+
+            ### Troubleshooting
+
+            **Check status:**
+            ```bash
+            systemctl status intercept
+            docker ps
+            ```
+
+            **View logs:**
+            ```bash
+            sudo journalctl -u intercept -f
+            docker logs intercept
+            ```
+
+            **Restart:**
+            ```bash
+            intercept-restart
+            ```
+
+            ### Notes
+            - First boot takes 3-5 minutes (Docker image pull)
+            - Subsequent boots: <30 seconds
+            - SSH enabled by default on port 22
+            - Web interface on port 5050
+            - All data persists in `/opt/intercept/data`
+
+            ### Checksums
+            Verify download integrity:
+            ```bash
+            sha256sum -c intercept-rpi-*.img.xz.sha256
+            ```
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
